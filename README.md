@@ -3,7 +3,7 @@
 ## Version Information
 ###
 
-Version 1.0-Alpha.1
+Version 1.0-Beta.x
 
 
 
