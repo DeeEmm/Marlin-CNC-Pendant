@@ -22,7 +22,7 @@ The nano mimics an analog joystick and so leverages the new analog joystick func
 
 The joystick is a very good control method and works great on both 3D printers and CNCs, however the traditional control input for a CNC machine is a jogwheel and axis selector switch, which gives a very different operating experience.
 
-This method also allows existing traditional jogwheel setups to be ustilised when retrofitting, as well as using universally and commonly available MPG pendant / handwheel controls.
+This method allows existing traditional jogwheel setups to be utilised when retrofitting as well as using universally and commonly available MPG pendant / handwheel controls.
 
 
 
