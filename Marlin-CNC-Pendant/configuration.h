@@ -26,20 +26,21 @@
     #define TX_PIN 1
     #define RX_PIN 2
 
-    #define JOGWHEEL_PIN_A 3
-    #define JOGWHEEL_PIN_B 4
+    #define JOGWHEEL_PIN_A 2
+    #define JOGWHEEL_PIN_B 3
 
     #define JOG_SPEED_100_PIN 5
     #define JOG_SPEED_10_PIN 6
     #define JOG_SPEED_1_PIN 7
     #define JOG_SPEED_01_PIN 8
-    #define X_AXIS_OUT_PIN 9 
-    #define Y_AXIS_OUT_PIN 10 
-    #define Z_AXIS_OUT_PIN 11 
+    #define X_AXIS_SELECT_PIN 9
+    #define Y_AXIS_SELECT_PIN 10
+    #define Z_AXIS_SELECT_PIN 11
+
     #define ENABLE_OUT_PIN 12
-    #define X_AXIS_SELECT_PIN 14
-    #define Y_AXIS_SELECT_PIN 15
-    #define Z_AXIS_SELECT_PIN 16
+    #define X_AXIS_OUT_PIN A0 
+    #define Y_AXIS_OUT_PIN A1 
+    #define Z_AXIS_OUT_PIN A2 
 
 
     // Define Voltage Levels
@@ -51,6 +52,17 @@
 
 
 #endif
+
+
+/****************************************
+ * GENERAL SETTINGS
+  ***/
+
+#define DEV_MODE
+
+
+
+
 
 /*
 3. Installing joystick - 
