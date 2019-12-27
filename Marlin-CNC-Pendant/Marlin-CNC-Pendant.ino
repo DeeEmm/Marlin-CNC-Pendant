@@ -28,14 +28,16 @@
  * DECLARE CONSTANTS
  ***/
 
+#define OFF 0
+#define ON 1 
+
 #define X_AXIS_SELECTED 1
 #define Y_AXIS_SELECTED 2
 #define Z_AXIS_SELECTED 3
 
-#define JOG_SPEED_1000_SELECTED 1
-#define JOG_SPEED_100_SELECTED 2
-#define JOG_SPEED_10_SELECTED 3
-#define JOG_SPEED_1_SELECTED 4
+#define JOG_SPEED_1_SELECTED 1
+#define JOG_SPEED_10_SELECTED 2
+#define JOG_SPEED_100_SELECTED 3
 
 
 /****************************************
@@ -45,8 +47,13 @@
 volatile int previousValue = 0;
 volatile int counterValue = 0;
 volatile bool jogActive = false;
+volatile bool stepActive = false;
 volatile int moveVector = 0;
 
+volatile unsigned long lastTriggeredTimeMs;
+volatile unsigned long targetTimeMs;
+unsigned long currentTimeMs;
+const unsigned long smoothingFactor = SMOOTHING_FACTOR;
 
 /****************************************
  * INITIALISATION
@@ -54,7 +61,7 @@ volatile int moveVector = 0;
 void setup ()
 {
 
-    #if defined DEV_MODE
+    #if defined SERIAL_DEBUG
         Serial.begin(9600);
     #endif    
     
@@ -64,7 +71,7 @@ void setup ()
     attachInterrupt(INTERRUPT_A, jogwheelInterrupt, CHANGE); 
     attachInterrupt(INTERRUPT_B, jogwheelInterrupt, CHANGE);
 
-    pinMode(ENABLE_PIN, INPUT_PULLUP);          
+       
     pinMode(JOG_SPEED_100_PIN, INPUT_PULLUP);   
     pinMode(JOG_SPEED_10_PIN, INPUT_PULLUP);    
     pinMode(JOG_SPEED_1_PIN, INPUT_PULLUP);     
@@ -78,8 +85,10 @@ void setup ()
     pinMode(Y_AXIS_OUT_PIN, OUTPUT);  
     pinMode(Z_AXIS_OUT_PIN, OUTPUT);  
 
+    currentTimeMs = millis();
+    targetTimeMs = millis();
 
-
+    stepActive = true;
   
 }
 
@@ -122,8 +131,9 @@ void jogwheelInterrupt() {
         moveVector =  -1;
     }    
 
-    // Control the loop cycle - we only want to process actual encoder clicks
-    jogActive = true;
+    lastTriggeredTimeMs = millis();
+
+    stepActive = true;
 }
 
 
@@ -140,9 +150,9 @@ int getAxis() {
     int Y_AXIS_ACTIVE = digitalRead(Y_AXIS_SELECT_PIN);
     int Z_AXIS_ACTIVE = digitalRead(Z_AXIS_SELECT_PIN);
 
-    if (X_AXIS_ACTIVE) return X_AXIS_SELECTED;
-    if (Y_AXIS_ACTIVE) return Y_AXIS_SELECTED;
-    if (Z_AXIS_ACTIVE) return Z_AXIS_SELECTED;
+    if (X_AXIS_ACTIVE == LOW) return X_AXIS_SELECTED;
+    if (Y_AXIS_ACTIVE == LOW) return Y_AXIS_SELECTED;
+    if (Z_AXIS_ACTIVE == LOW) return Z_AXIS_SELECTED;
     
 }
 
@@ -155,16 +165,15 @@ int getAxis() {
  * GET SPEED
  * Decode selected speed
  * Designed for rotary switches where only selected speed is active / high
+ * Switch to ground (input low to trigger)
  ***/
 int getSpeed() {
 
-    int JOG_SPEED_100_ACTIVE = digitalRead(JOG_SPEED_100_PIN); 
-    int JOG_SPEED_10_ACTIVE = digitalRead(JOG_SPEED_10_PIN); 
-    int JOG_SPEED_1_ACTIVE = digitalRead(JOG_SPEED_1_PIN); 
+    if (digitalRead(JOG_SPEED_1_PIN) == LOW) return JOG_SPEED_1_SELECTED;
+    if (digitalRead(JOG_SPEED_10_PIN) == LOW) return JOG_SPEED_10_SELECTED;
+    if (digitalRead(JOG_SPEED_100_PIN) == LOW) return JOG_SPEED_100_SELECTED;
 
-    if (JOG_SPEED_100_ACTIVE) return JOG_SPEED_100_SELECTED;
-    if (JOG_SPEED_10_ACTIVE) return JOG_SPEED_10_SELECTED;
-    if (JOG_SPEED_1_ACTIVE) return JOG_SPEED_1_SELECTED;
+    return 0;
 
 }
 
@@ -189,15 +198,15 @@ void sendJogSignal(int selectedAxis, int selectedSpeed, int moveVector) {
     {
 
         case JOG_SPEED_100_SELECTED:
-            outputValue = DEAD_BAND_CENTRE_VALUE + (JOG_SPEED_100_MULTIPLER * moveVector);
+            outputValue = DEAD_BAND_CENTER_VALUE + (JOG_SPEED_100_MULTIPLIER * moveVector);
         break;
 
         case JOG_SPEED_10_SELECTED:
-            outputValue = DEAD_BAND_CENTRE_VALUE + (JOG_SPEED_10_MULTIPLER * moveVector);
+            outputValue = DEAD_BAND_CENTER_VALUE + (JOG_SPEED_10_MULTIPLIER * moveVector);
         break;
 
         case JOG_SPEED_1_SELECTED:
-            outputValue = DEAD_BAND_CENTRE_VALUE + (JOG_SPEED_1_MULTIPLER * moveVector);
+            outputValue = DEAD_BAND_CENTER_VALUE + (JOG_SPEED_1_MULTIPLIER * moveVector);
         break;
 
     }
@@ -207,19 +216,19 @@ void sendJogSignal(int selectedAxis, int selectedSpeed, int moveVector) {
     {
         case X_AXIS_SELECTED:
             analogWrite(X_AXIS_OUT_PIN, outputValue);
-            analogWrite(Y_AXIS_OUT_PIN, DEAD_BAND_CENTRE_VALUE);
-            analogWrite(Z_AXIS_OUT_PIN, DEAD_BAND_CENTRE_VALUE);
+            analogWrite(Y_AXIS_OUT_PIN, DEAD_BAND_CENTER_VALUE);
+            analogWrite(Z_AXIS_OUT_PIN, DEAD_BAND_CENTER_VALUE);
         break;
 
         case Y_AXIS_SELECTED:
-            analogWrite(X_AXIS_OUT_PIN, DEAD_BAND_CENTRE_VALUE);
+            analogWrite(X_AXIS_OUT_PIN, DEAD_BAND_CENTER_VALUE);
             analogWrite(Y_AXIS_OUT_PIN, outputValue);
-            analogWrite(Z_AXIS_OUT_PIN, DEAD_BAND_CENTRE_VALUE);
+            analogWrite(Z_AXIS_OUT_PIN, DEAD_BAND_CENTER_VALUE);
         break;
 
         case Z_AXIS_SELECTED:
-            analogWrite(X_AXIS_OUT_PIN, DEAD_BAND_CENTRE_VALUE);
-            analogWrite(Y_AXIS_OUT_PIN, DEAD_BAND_CENTRE_VALUE);
+            analogWrite(X_AXIS_OUT_PIN, DEAD_BAND_CENTER_VALUE);
+            analogWrite(Y_AXIS_OUT_PIN, DEAD_BAND_CENTER_VALUE);
             analogWrite(Z_AXIS_OUT_PIN, outputValue);
         break;
 
@@ -234,28 +243,55 @@ void sendJogSignal(int selectedAxis, int selectedSpeed, int moveVector) {
  ***/
 void loop(){ 
 
+    currentTimeMs = millis();
+
     // Decode axis & speed selector switches
     int selectedAxis = getAxis();
-    int selectedSpeed = getSpeed();    
+    int selectedSpeed = getSpeed();
 
-    // If encoder motion not detected, zero the move vector
-    if (jogActive == true) {
-        jogActive = false; 
+    // If speed selector <> 0 Send enable signal to Marlin 
+    if ((SPEED_SWITCH_ENABLE == true) && (selectedSpeed != 0)) {
+      digitalWrite(ENABLE_OUT_PIN, HIGH);
     } else {
-       moveVector = 0;
+      digitalWrite(ENABLE_OUT_PIN, LOW);      
     }
 
-    #if defined DEV_MODE
-        if (moveVector == 1){
-            Serial.println(">>>>>>>>>>>>>>>>>");      
-        }
-        if (moveVector == -1){
-            Serial.println("<<<<<<<<<<<<<<<<<");      
-        }
-    #endif  
-        
-    // Send move data to Marlin
-    sendJogSignal(selectedAxis, selectedSpeed, moveVector);
+    // If X1 speed selected only move one click
+    if (selectedSpeed == JOG_SPEED_1_SELECTED ) {
+
+          if (stepActive == true) {
+              stepActive = false; 
+          } else {
+              moveVector = 0;
+          }  
+          sendJogSignal(selectedAxis, selectedSpeed, moveVector);        
+
+          #if defined SERIAL_DEBUG
+              if (moveVector == 1){
+                  Serial.println(">  >  >  >  >  >  >");      
+              }
+              if (moveVector == -1){
+                  Serial.println("<  <  <  <  <  <  <");      
+              }
+          #endif  
+    
+    // Else move in accordance with smoothing factor (try to maintain smooth movement)
+    } else if ((currentTimeMs - smoothingFactor) < lastTriggeredTimeMs) {  
+          sendJogSignal(selectedAxis, selectedSpeed, moveVector);        
+
+          #if defined SERIAL_DEBUG
+              if (moveVector == 1){
+                  Serial.println(">>>>>>>>>>>>>>>>>>");      
+              }
+              if (moveVector == -1){
+                  Serial.println("<<<<<<<<<<<<<<<<<<");      
+              }
+          #endif  
+                     
+    } else {
+          sendJogSignal(selectedAxis, selectedSpeed, int(DEAD_BAND_CENTER_VALUE));              
+    }
+
 
 
 }
