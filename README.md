@@ -52,6 +52,9 @@ Universal pendant / jogwheel / handwheel interface that interfaces to standard M
 
 - Compile and upload to an Arduino nano
 - Connect wiring according to pin connections in configuration.h
+- Connect X, Y, Z and Enable outputs to your CNC / 3D printer in accordance with Marlin instructions.
+- Enable joystick control in Marlin
+- Fine tune Zero and Multiplier values as necessary
 
 ## BOM
 ###
