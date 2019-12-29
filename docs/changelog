@@ -1,3 +1,6 @@
+19122801 - Added C/R low pass filter and tweaked move values
+		 - Changed speed multipliers for fixed speed values
+		 - Added usage explaination and comments
 19122801 - Added X10 / X100 output smoothing
 		 - Added single-step
 19122703 - #1 Speed scaling added to code

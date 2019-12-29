@@ -13,7 +13,8 @@
 
 // Development and release version - Don't forget to update the changelog!!
 #define VERSION "V1.0-Alpha"
-#define BUILD "19122801"
+#define BUILD "19123001"
+
 
 
 /****************************************
@@ -24,20 +25,20 @@
 #include "configuration.h"
 
 
+
 /****************************************
  * DECLARE CONSTANTS
  ***/
 
-#define OFF 0
-#define ON 1 
+#define ZERO 0
 
 #define X_AXIS_SELECTED 1
 #define Y_AXIS_SELECTED 2
 #define Z_AXIS_SELECTED 3
 
-#define JOG_SPEED_1_SELECTED 1
-#define JOG_SPEED_10_SELECTED 2
-#define JOG_SPEED_100_SELECTED 3
+#define JOG_SPEED_X1_SELECTED 1
+#define JOG_SPEED_X10_SELECTED 2
+#define JOG_SPEED_X100_SELECTED 3
 
 
 /****************************************
@@ -46,14 +47,18 @@
 
 volatile int previousValue = 0;
 volatile int counterValue = 0;
+volatile int clickCount = 0;
+volatile int clickStore = 0;
 volatile bool jogActive = false;
 volatile bool stepActive = false;
-volatile int moveVector = 0;
+volatile int jogDirection = 0;
 
 volatile unsigned long lastTriggeredTimeMs;
 volatile unsigned long targetTimeMs;
 unsigned long currentTimeMs;
 const unsigned long smoothingFactor = SMOOTHING_FACTOR;
+
+
 
 /****************************************
  * INITIALISATION
@@ -72,9 +77,9 @@ void setup ()
     attachInterrupt(INTERRUPT_B, jogwheelInterrupt, CHANGE);
 
        
-    pinMode(JOG_SPEED_100_PIN, INPUT_PULLUP);   
-    pinMode(JOG_SPEED_10_PIN, INPUT_PULLUP);    
-    pinMode(JOG_SPEED_1_PIN, INPUT_PULLUP);     
+    pinMode(JOG_SPEED_X100_PIN, INPUT_PULLUP);   
+    pinMode(JOG_SPEED_X10_PIN, INPUT_PULLUP);    
+    pinMode(JOG_SPEED_X1_PIN, INPUT_PULLUP);     
     
     pinMode(X_AXIS_SELECT_PIN, INPUT_PULLUP);   
     pinMode(Y_AXIS_SELECT_PIN, INPUT_PULLUP); 
@@ -87,8 +92,7 @@ void setup ()
 
     currentTimeMs = millis();
     targetTimeMs = millis();
-
-    stepActive = true;
+    stepActive = false;
   
 }
 
@@ -111,6 +115,7 @@ void jogwheelInterrupt() {
         combined == 0b1101 || 
         combined == 0b0100) {
         counterValue++;
+        clickCount++;
     }
    
     if(combined == 0b0001 ||
@@ -118,6 +123,7 @@ void jogwheelInterrupt() {
         combined == 0b1110 ||
         combined == 0b1000) {
         counterValue--;
+        clickCount--;
     }
 
     previousValue = currentValue;
@@ -125,10 +131,11 @@ void jogwheelInterrupt() {
    // Decode the direction
     if(counterValue >= 4) {
         counterValue -= 4;
-        moveVector =  1;
+        jogDirection =  1;
+        
     } else if(counterValue <= -4) {
         counterValue += 4;
-        moveVector =  -1;
+        jogDirection =  -1;
     }    
 
     lastTriggeredTimeMs = millis();
@@ -143,93 +150,92 @@ void jogwheelInterrupt() {
  * GET AXIS
  * Decode selected axis
  * Designed for rotary switches where only selected axis is active / high
+ * Switch to ground (input low to trigger)
  ***/
 int getAxis() {
     
-    int X_AXIS_ACTIVE = digitalRead(X_AXIS_SELECT_PIN);
-    int Y_AXIS_ACTIVE = digitalRead(Y_AXIS_SELECT_PIN);
-    int Z_AXIS_ACTIVE = digitalRead(Z_AXIS_SELECT_PIN);
-
-    if (X_AXIS_ACTIVE == LOW) return X_AXIS_SELECTED;
-    if (Y_AXIS_ACTIVE == LOW) return Y_AXIS_SELECTED;
-    if (Z_AXIS_ACTIVE == LOW) return Z_AXIS_SELECTED;
+    if (digitalRead(X_AXIS_SELECT_PIN) == LOW) return X_AXIS_SELECTED;
+    if (digitalRead(Y_AXIS_SELECT_PIN) == LOW) return Y_AXIS_SELECTED;
+    if (digitalRead(Z_AXIS_SELECT_PIN) == LOW) return Z_AXIS_SELECTED;
     
 }
 
 
 
 
-
-
 /****************************************
- * GET SPEED
+ * GET SELECTED SPEED
  * Decode selected speed
  * Designed for rotary switches where only selected speed is active / high
  * Switch to ground (input low to trigger)
  ***/
 int getSpeed() {
 
-    if (digitalRead(JOG_SPEED_1_PIN) == LOW) return JOG_SPEED_1_SELECTED;
-    if (digitalRead(JOG_SPEED_10_PIN) == LOW) return JOG_SPEED_10_SELECTED;
-    if (digitalRead(JOG_SPEED_100_PIN) == LOW) return JOG_SPEED_100_SELECTED;
+    if (digitalRead(JOG_SPEED_X1_PIN) == LOW) return JOG_SPEED_X1_SELECTED;
+    if (digitalRead(JOG_SPEED_X10_PIN) == LOW) return JOG_SPEED_X10_SELECTED;
+    if (digitalRead(JOG_SPEED_X100_PIN) == LOW) return JOG_SPEED_X100_SELECTED;
 
-    return 0;
+    return ZERO;
 
 }
+
 
 
 
 /****************************************
  * SEND JOG SIGNAL
  ***/
-void sendJogSignal(int selectedAxis, int selectedSpeed, int moveVector) {
+void sendJogSignal(int selectedAxis, int selectedSpeed, int jogDirection) {
 
-    int outputValue;
+    int moveVector;
+    int xCenter = ((JOY_X_VALUE / 16384) * 256);
+    int yCenter = ((JOY_Y_VALUE / 16384) * 256);
+    int zCenter = ((JOY_Z_VALUE / 16384) * 256);
 
-    // Info from Joystick function
-    // Use M114 to determine reasonable values for these after connecting your hardware
-    // { Minimum value, dead zone start, dead zone end, maximum value }
-    //#define JOY_X_LIMITS { 5600, 8190-100, 8190+100, 10800 }
-    //#define JOY_Y_LIMITS { 5600, 8250-100, 8250+100, 11000 }
-    //#define JOY_Z_LIMITS { 4800, 8080-100, 8080+100, 11550 }
-    
+    //check we have not already moved this click
+    if (clickCount == clickStore) {
+      return;
+    } else {
+      clickCount = clickStore;
+    }
+
     // Decode which speed is selected and determine output voltage from move vector and multiplier
     switch (selectedSpeed)
     {
 
-        case JOG_SPEED_100_SELECTED:
-            outputValue = DEAD_BAND_CENTER_VALUE + (JOG_SPEED_100_MULTIPLIER * moveVector);
+        case JOG_SPEED_X1_SELECTED:
+            moveVector = (xCenter + JOG_SPEED_X1) * jogDirection;
         break;
 
-        case JOG_SPEED_10_SELECTED:
-            outputValue = DEAD_BAND_CENTER_VALUE + (JOG_SPEED_10_MULTIPLIER * moveVector);
+        case JOG_SPEED_X10_SELECTED:
+            moveVector = (yCenter + JOG_SPEED_X10) * jogDirection;
         break;
 
-        case JOG_SPEED_1_SELECTED:
-            outputValue = DEAD_BAND_CENTER_VALUE + (JOG_SPEED_1_MULTIPLIER * moveVector);
+        case JOG_SPEED_X100_SELECTED:
+            moveVector = (zCenter + JOG_SPEED_X100) * jogDirection;
         break;
-
     }
 
-    // Select the axis and send the output (lets also make sure other axis are not moved)
+
+    // Select the axis and send the output. Lets also make sure other axis are not moved.
     switch (selectedAxis)
     {
         case X_AXIS_SELECTED:
-            analogWrite(X_AXIS_OUT_PIN, outputValue);
-            analogWrite(Y_AXIS_OUT_PIN, DEAD_BAND_CENTER_VALUE);
-            analogWrite(Z_AXIS_OUT_PIN, DEAD_BAND_CENTER_VALUE);
+            analogWrite(X_AXIS_OUT_PIN, moveVector);
+            analogWrite(Y_AXIS_OUT_PIN, yCenter);
+            analogWrite(Z_AXIS_OUT_PIN, zCenter);
         break;
 
         case Y_AXIS_SELECTED:
-            analogWrite(X_AXIS_OUT_PIN, DEAD_BAND_CENTER_VALUE);
-            analogWrite(Y_AXIS_OUT_PIN, outputValue);
-            analogWrite(Z_AXIS_OUT_PIN, DEAD_BAND_CENTER_VALUE);
+            analogWrite(X_AXIS_OUT_PIN, xCenter);
+            analogWrite(Y_AXIS_OUT_PIN, moveVector);
+            analogWrite(Z_AXIS_OUT_PIN, zCenter);
         break;
 
         case Z_AXIS_SELECTED:
-            analogWrite(X_AXIS_OUT_PIN, DEAD_BAND_CENTER_VALUE);
-            analogWrite(Y_AXIS_OUT_PIN, DEAD_BAND_CENTER_VALUE);
-            analogWrite(Z_AXIS_OUT_PIN, outputValue);
+            analogWrite(X_AXIS_OUT_PIN, xCenter);
+            analogWrite(Y_AXIS_OUT_PIN, yCenter);
+            analogWrite(Z_AXIS_OUT_PIN, moveVector);
         break;
 
     }
@@ -243,6 +249,7 @@ void sendJogSignal(int selectedAxis, int selectedSpeed, int moveVector) {
  ***/
 void loop(){ 
 
+    // What's the time?
     currentTimeMs = millis();
 
     // Decode axis & speed selector switches
@@ -256,42 +263,50 @@ void loop(){
       digitalWrite(ENABLE_OUT_PIN, LOW);      
     }
 
-    // If X1 speed selected only move one click
-    if (selectedSpeed == JOG_SPEED_1_SELECTED ) {
+    // If X1 speed selected only move one pulse per click
+    if (selectedSpeed == JOG_SPEED_X1_SELECTED ) {
 
+          //make sure we only move one click
           if (stepActive == true) {
               stepActive = false; 
           } else {
-              moveVector = 0;
+              jogDirection = 0;
           }  
-          sendJogSignal(selectedAxis, selectedSpeed, moveVector);        
 
+          // Do the move
+          sendJogSignal(selectedAxis, selectedSpeed, jogDirection);        
+
+          //delay by pulse width
+          delay(X1_PULSE_WIDTH);
+          
           #if defined SERIAL_DEBUG
-              if (moveVector == 1){
+              if (jogDirection == 1){
                   Serial.println(">  >  >  >  >  >  >");      
               }
-              if (moveVector == -1){
+              if (jogDirection == -1){
                   Serial.println("<  <  <  <  <  <  <");      
               }
           #endif  
     
     // Else move in accordance with smoothing factor (try to maintain smooth movement)
     } else if ((currentTimeMs - smoothingFactor) < lastTriggeredTimeMs) {  
-          sendJogSignal(selectedAxis, selectedSpeed, moveVector);        
+
+          // Do the move
+          sendJogSignal(selectedAxis, selectedSpeed, jogDirection);        
 
           #if defined SERIAL_DEBUG
-              if (moveVector == 1){
+              if (jogDirection == 1){
                   Serial.println(">>>>>>>>>>>>>>>>>>");      
               }
-              if (moveVector == -1){
+              if (jogDirection == -1){
                   Serial.println("<<<<<<<<<<<<<<<<<<");      
               }
           #endif  
                      
     } else {
-          sendJogSignal(selectedAxis, selectedSpeed, int(DEAD_BAND_CENTER_VALUE));              
+
+          // We are not trying to move so send a zero vector
+          sendJogSignal(selectedAxis, selectedSpeed, ZERO);              
     }
-
-
 
 }
