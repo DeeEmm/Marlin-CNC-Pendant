@@ -22,6 +22,18 @@
  * This is done by holding the CS (Chip Select) line low. 
  * The MCP4151 chip will revert to mid-scale when powered up, other variants may not.
  * 
+ * Pin connections for MCP4151.
+ * Three devices are required - one for each axis, connected as follows:
+ * 
+ * 1 -CS (Chip Select) - Nano Pin 14/15/16 for X/Y/Z axis respectively
+ * 2 - SCK (Clock) - Nano Pin 13 (SCK) for all devices
+ * 3 - SDI/SDO (Serial) - Nano Pin 11 (MOSI) for all devices
+ * 4 - GND (0V)
+ * 5 - GND (0v)
+ * 6 - Wiper out - Connect to the X/Y/Z axis input on your RAMPs/3D printer controller
+ * 7 - VCC (5v)
+ * 8 - VCC (5v)
+ * 
  * MARLIN CONFIGURATION
  * The following values can be found in Configuration_adv.h in Marlin 
  * 
