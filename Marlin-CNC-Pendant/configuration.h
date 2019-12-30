@@ -15,26 +15,12 @@
  * JOY_EN_PIN  - AUX2 pin D44 (logical Pin 64)
  * 
  * 
- * PWM OUTPUT SMOOTHING
- * You will need to connect an R/C network to smooth the PWM output into a 'steady' state DC voltage.
- * For this you will need one 100uf capacitor and a resistor between 160-330 ohms connected as follows:
- * 
- * O/P o-----[ 330R ]-------------o CNC
- *                      |                             
- *                     ___
- *                     ___ 100uf
- *                      |
- *                      |
- *                      o GND (0v)
- * 
- * This will filter much of the square wave PWM output into a much smaller ripple 
- * 
- *  ___   ___
- *  |  |  |  |    Will become...  /\/\/\/\/\/\/\/
- * _|  |__|  |_  
- * 
- * There's still some small ripple there, so we need to open up the dead band in the joystick settings to compensate...
- * 
+ * MCP4151 VCR (VOLTAGE CONTROLLED RESISTOR) (10kohm)
+ * This chip works over SPI comms, which means you need to connect MOSI (serial data) and 
+ * SCK (serial clock) lines between the arduino and MCP4151. In addition to this you also 
+ * need to enable each chip individually to identify which chip you are writing to. 
+ * This is done by holding the CS (Chip Select) line low. 
+ * The MCP4151 chip will revert to mid-scale when powered up, other variants may not.
  * 
  * MARLIN CONFIGURATION
  * The following values can be found in Configuration_adv.h in Marlin 
@@ -46,26 +32,19 @@
  * For the Gcode command to work you will need to add the following line
  * #define JOYSTICK_DEBUG
  * 
- * Then issue the M119 command a nuber of times and average out the reading. This is the centre (the 7300 value below)
- * Next you want to addjust the deadband limits (the +/-1300 value below). This value has to be larger than any of the readings you 
- * got from the M119 command.
+ * Then issue the M119 command a number of times and average out the reading. This is the centre value (the 8175 value below).
+ * This value should be half of the full 14 bit range (16384/2 = 8192) but may differ depending on the resistance of the circuit.
+ * If the value differs a little then adjust the values in Marlin.
  * 
- * #define JOY_X_LIMITS { 5600, 7300-1300, 7300+1300, 10800 } // min, deadzone start, deadzone end, max
- * #define JOY_Y_LIMITS { 5600, 7300-1300, 7300+1300, 11000 }
- * #define JOY_Z_LIMITS { 4800, 7300-1300, 7300+1300, 11550 }
+ * Next you want to addjust the deadband limits (the +/-100 value below). This value has to be larger than any of the readings you 
+ * got from the M119 command. There should not really be any reason to change this
+ * 
+ * #define JOY_X_LIMITS { 5600, 8175-100, 8175-100, 10800 } // min, deadzone start, deadzone end, max
+ * #define JOY_Y_LIMITS { 5600, 8175-100, 8175-100, 11000 }
+ * #define JOY_Z_LIMITS { 4800, 8175-100, 8175-100, 11550 }
  * 
  * 
  * Notes:
- * 
- * Nano O/P resolution = 256 steps
- * .: center position = 128 steps
- * Marlin joystick range = 2^10 = 16384 (10 bit resolution)
- * .: 16384 points / 256 = 64 points per step
- * Voltage range = 5v
- * 5/256 = 19.6mv per step
- * Approx deadband required for a 10khz RC low pass filter
- * 2600 points (approx 41 steps or 0.8v) 
- * .: 128+21 or 128-21 steps before movement (approx 0.4v)
  * 
  ***/
 
@@ -83,18 +62,21 @@
  * GENERAL SETTINGS
  ***/
 
-//#define SERIAL_DEBUG                    // Enable Serial debug mode
+#define SERIAL_DEBUG                      // Enable Serial debug mode
 
-#define JOY_X_VALUE 5627                  // X value returned when stationary using M119
-#define JOY_Y_VALUE 7759                  // Y value returned when stationary using M119
-#define JOY_Z_VALUE 7635                  // Z value returned when stationary using M119
+#define VCR_POT_RES 256                   // 128 or 256 depeonding on VCR chip resolution and settings
+#define BYTE_ADDRESS 0x00                 // 0x00 is pot wiper address
+
+#define JOY_X_CENTER_VALUE (float) 8192   // 14 BIT ADC resolution = 2^14 = 16384 
+#define JOY_Y_CENTER_VALUE (float) 8192   // Mid range (center position) = 16384 / 2 = 8192
+#define JOY_Z_CENTER_VALUE (float) 8192   // Should be same as returned by M119 but may differ slightly depending on resistance of VCR / circuits
 
 #define X1_PULSE_WIDTH 10                 // Jog pulse duration in ms (X1 speed only)
-#define SMOOTHING_FACTOR 100               // Increase to smooth movement (Disabled for X1 speed)
-#define VECTOR_VALUE 1                    // Vector multiplier (Default 1).
-#define JOG_SPEED_X1 30                   // Speed adjustment (yCenter + JOG_SPEED_X1 * VECTOR_VALUE = move speed)     
-#define JOG_SPEED_X10 40         
-#define JOG_SPEED_X100 50       
+#define SMOOTHING_FACTOR 100              // Increase to smooth movement (Disabled for X1 speed)
+
+#define JOG_SPEED_X1 5                    // NOTE: Speed range is between 0 ~ 64 (0 ~ 100%)      
+#define JOG_SPEED_X10 10                  // Choose values to suit your setup
+#define JOG_SPEED_X100 20                 // e.g. 16 = 25% 
 
 #define SPEED_SWITCH_ENABLE true          // Disable system if speed selector switch is open: [0] - X1 - X10 - X100
                                           // Otherwise enable signal should be mnaged externally with a physical switch
@@ -119,24 +101,28 @@
 
     // Define Physical Pins: 
     // (colour codes for generic MPG handwheel pendant included)
+    
+    // Inputs
     #define JOGWHEEL_PIN_A 2            // MPG - green
     #define JOGWHEEL_PIN_B 3            // MPG - white
 
-    #define JOG_SPEED_X1_PIN 4           // MPG - orange
-    #define JOG_SPEED_X10_PIN 5          // MPG - grey/black
-    #define JOG_SPEED_X100_PIN 13        // MPG - grey
+    #define JOG_SPEED_X1_PIN 4          // MPG - orange
+    #define JOG_SPEED_X10_PIN 5         // MPG - grey/black
+    #define JOG_SPEED_X100_PIN 6        // MPG - grey
     
-    #define X_AXIS_SELECT_PIN 6         // MPG - yellow
-    #define Y_AXIS_SELECT_PIN 7         // MPG - yellow/black
-    #define Z_AXIS_SELECT_PIN 8         // MPG - brown
+    #define X_AXIS_SELECT_PIN 7         // MPG - yellow
+    #define Y_AXIS_SELECT_PIN 8         // MPG - yellow/black
+    #define Z_AXIS_SELECT_PIN 9         // MPG - brown
 
 
     // Define outputs
-    // See notes at top RE pin connection schema for RAMPs / RUMBA
-    // NOTE: must be PWM pins
-    #define X_AXIS_OUT_PIN 9            // JOY_X_PIN
-    #define Y_AXIS_OUT_PIN 10           // JOY_Y_PIN 
-    #define Z_AXIS_OUT_PIN 11           // JOY_Z_PIN 
-    #define ENABLE_OUT_PIN 12           // JOY_EN_PIN 
+
+    #define MOSI 11                     // pin 3 on all MCP4151s (SDI/SDO)
+    #define SCK 13                      // pin 2 on all MCP4151s (SCK)
+    #define X_AXIS_CS_PIN 14            // pin 1 on X Axis MCP4151 (CS)
+    #define Y_AXIS_CS_PIN 15            // pin 1 on Y Axis MCP4151 (CS)
+    #define Z_AXIS_CS_PIN 16            // pin 1 on Z Axis MCP4151 (CS)
+
+    #define ENABLE_OUT_PIN 17           // JOY_EN_PIN 
 
 #endif
