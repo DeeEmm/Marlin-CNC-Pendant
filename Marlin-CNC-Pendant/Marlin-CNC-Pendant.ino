@@ -12,8 +12,8 @@
  ***/
 
 // Development and release version - Don't forget to update the changelog!!
-#define VERSION "V1.0-Alpha"
-#define BUILD "19123001"
+#define VERSION "V1.0-Beta"
+#define BUILD "19123002.VCR"
 
 
 

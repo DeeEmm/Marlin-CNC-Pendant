@@ -1,4 +1,5 @@
-19122801 - Added C/R low pass filter and tweaked move values
+19123002.VCR - VCR Control branch initial commit
+19123001 - Added C/R low pass filter and tweaked move values
 		 - Changed speed multipliers for fixed speed values
 		 - Added usage explaination and comments
 19122801 - Added X10 / X100 output smoothing
