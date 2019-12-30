@@ -1,3 +1,5 @@
+19123003.VCR - VCR control added
+			 - Tested and working
 19123002.VCR - VCR Control branch initial commit
 19123001 - Added C/R low pass filter and tweaked move values
 		 - Changed speed multipliers for fixed speed values

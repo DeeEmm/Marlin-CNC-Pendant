@@ -13,7 +13,7 @@
 
 // Development and release version - Don't forget to update the changelog!!
 #define VERSION "V1.0-Beta"
-#define BUILD "19123002.VCR"
+#define BUILD "19123003.VCR"
 
 
 
@@ -23,7 +23,7 @@
  
 #include <Arduino.h>
 #include "configuration.h"
-
+#include <SPI.h>
 
 
 /****************************************
@@ -51,7 +51,7 @@ volatile int clickCount = 0;
 volatile int clickStore = 0;
 volatile bool jogActive = false;
 volatile bool stepActive = false;
-volatile int jogDirection = 0;
+volatile int moveVector = 0;
 
 volatile unsigned long lastTriggeredTimeMs;
 volatile unsigned long targetTimeMs;
@@ -86,13 +86,20 @@ void setup ()
     pinMode(Z_AXIS_SELECT_PIN, INPUT_PULLUP);  
 
     pinMode(ENABLE_OUT_PIN, OUTPUT);
-    pinMode(X_AXIS_OUT_PIN, OUTPUT);
-    pinMode(Y_AXIS_OUT_PIN, OUTPUT);  
-    pinMode(Z_AXIS_OUT_PIN, OUTPUT);  
+    pinMode(X_AXIS_CS_PIN, OUTPUT);
+    pinMode(Y_AXIS_CS_PIN, OUTPUT);  
+    pinMode(Z_AXIS_CS_PIN, OUTPUT);  
 
     currentTimeMs = millis();
     targetTimeMs = millis();
     stepActive = false;
+
+    // initialize SPI:
+    SPI.begin();
+
+    digitalWrite(X_AXIS_CS_PIN, HIGH);
+    digitalWrite(Y_AXIS_CS_PIN, HIGH);
+    digitalWrite(Z_AXIS_CS_PIN, HIGH);
   
 }
 
@@ -131,11 +138,11 @@ void jogwheelInterrupt() {
    // Decode the direction
     if(counterValue >= 4) {
         counterValue -= 4;
-        jogDirection =  1;
+        moveVector =  1;
         
     } else if(counterValue <= -4) {
         counterValue += 4;
-        jogDirection =  -1;
+        moveVector =  -1;
     }    
 
     lastTriggeredTimeMs = millis();
@@ -182,18 +189,27 @@ int getSpeed() {
 
 
 
+
 /****************************************
  * SEND JOG SIGNAL
  ***/
-void sendJogSignal(int selectedAxis, int selectedSpeed, int jogDirection) {
+void sendJogSignal(int selectedAxis, int selectedSpeed, int moveDirection) {
 
+    int wiperPosition;
     int moveVector;
-    int xCenter = ((JOY_X_VALUE / 16384) * 256);
-    int yCenter = ((JOY_Y_VALUE / 16384) * 256);
-    int zCenter = ((JOY_Z_VALUE / 16384) * 256);
 
+    float xCenter = (JOY_X_CENTER_VALUE / 16384) * VCR_POT_RES;
+    float yCenter = (JOY_Y_CENTER_VALUE / 16384) * VCR_POT_RES;
+    float zCenter = (JOY_Z_CENTER_VALUE / 16384) * VCR_POT_RES;
+
+    byte address = BYTE_ADDRESS;
+
+    #ifdef SERIAL_DEBUG
+//        Serial.println(xCenter);
+    #endif
+    
     //check we have not already moved this click
-    if (clickCount == clickStore) {
+    if ((clickCount == clickStore) && (moveVector != 0)) {
       return;
     } else {
       clickCount = clickStore;
@@ -204,42 +220,53 @@ void sendJogSignal(int selectedAxis, int selectedSpeed, int jogDirection) {
     {
 
         case JOG_SPEED_X1_SELECTED:
-            moveVector = (xCenter + JOG_SPEED_X1) * jogDirection;
+            moveVector = JOG_SPEED_X1 * moveDirection;
         break;
 
         case JOG_SPEED_X10_SELECTED:
-            moveVector = (yCenter + JOG_SPEED_X10) * jogDirection;
+            moveVector = JOG_SPEED_X10 * moveDirection;
         break;
 
         case JOG_SPEED_X100_SELECTED:
-            moveVector = (zCenter + JOG_SPEED_X100) * jogDirection;
+            moveVector = JOG_SPEED_X100 * moveDirection;
         break;
     }
 
+    #ifdef SERIAL_DEBUG
+//        Serial.println(moveVector);
+    #endif
 
-    // Select the axis and send the output. Lets also make sure other axis are not moved.
+    // Select the correct VCR and set the wiper position.
     switch (selectedAxis)
     {
         case X_AXIS_SELECTED:
-            analogWrite(X_AXIS_OUT_PIN, moveVector);
-            analogWrite(Y_AXIS_OUT_PIN, yCenter);
-            analogWrite(Z_AXIS_OUT_PIN, zCenter);
+            wiperPosition = xCenter + moveVector;
+            digitalWrite(X_AXIS_CS_PIN, LOW);
+            SPI.transfer(address);
+            SPI.transfer(wiperPosition);
+            digitalWrite(X_AXIS_CS_PIN, HIGH);       
         break;
 
         case Y_AXIS_SELECTED:
-            analogWrite(X_AXIS_OUT_PIN, xCenter);
-            analogWrite(Y_AXIS_OUT_PIN, moveVector);
-            analogWrite(Z_AXIS_OUT_PIN, zCenter);
+            wiperPosition = yCenter + moveVector;
+            digitalWrite(Y_AXIS_CS_PIN, LOW);
+            SPI.transfer(address);
+            SPI.transfer(wiperPosition);
+            digitalWrite(Y_AXIS_CS_PIN, HIGH);
         break;
 
         case Z_AXIS_SELECTED:
-            analogWrite(X_AXIS_OUT_PIN, xCenter);
-            analogWrite(Y_AXIS_OUT_PIN, yCenter);
-            analogWrite(Z_AXIS_OUT_PIN, moveVector);
+            wiperPosition = zCenter + moveVector;
+            digitalWrite(Z_AXIS_CS_PIN, LOW);
+            SPI.transfer(address);
+            SPI.transfer(wiperPosition);
+            digitalWrite(Z_AXIS_CS_PIN, HIGH);
         break;
-
     }
 
+    #ifdef SERIAL_DEBUG
+        Serial.println(wiperPosition);
+    #endif
 }
 
 
@@ -270,20 +297,20 @@ void loop(){
           if (stepActive == true) {
               stepActive = false; 
           } else {
-              jogDirection = 0;
+              moveVector = 0;
           }  
 
           // Do the move
-          sendJogSignal(selectedAxis, selectedSpeed, jogDirection);        
+          sendJogSignal(selectedAxis, selectedSpeed, moveVector);        
 
           //delay by pulse width
           delay(X1_PULSE_WIDTH);
           
-          #if defined SERIAL_DEBUG
-              if (jogDirection == 1){
+          #ifdef SERIAL_DEBUG
+              if (moveVector == 1){
                   Serial.println(">  >  >  >  >  >  >");      
               }
-              if (jogDirection == -1){
+              if (moveVector == -1){
                   Serial.println("<  <  <  <  <  <  <");      
               }
           #endif  
@@ -292,13 +319,13 @@ void loop(){
     } else if ((currentTimeMs - smoothingFactor) < lastTriggeredTimeMs) {  
 
           // Do the move
-          sendJogSignal(selectedAxis, selectedSpeed, jogDirection);        
+          sendJogSignal(selectedAxis, selectedSpeed, moveVector);        
 
-          #if defined SERIAL_DEBUG
-              if (jogDirection == 1){
+          #ifdef SERIAL_DEBUG
+              if (moveVector == 1){
                   Serial.println(">>>>>>>>>>>>>>>>>>");      
               }
-              if (jogDirection == -1){
+              if (moveVector == -1){
                   Serial.println("<<<<<<<<<<<<<<<<<<");      
               }
           #endif  
