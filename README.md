@@ -44,8 +44,7 @@ Universal pendant / jogwheel / handwheel interface that interfaces to standard M
 
 - The project is currently in Beta stage
 - Current stable release available from https://github.com/DeeEmm/Marlin-CNC-Pendant/releases
-- Code compiles and works but needs validation
-- Speed control and zero points need defining and testing
+- Code has been tested to work with new Marlin 2.0 release
 
 
 ## Usage / Getting started
