@@ -3,7 +3,7 @@
 ## Version Information
 ###
 
-Version 1.0-Beta.x
+Version 1.0-RC.1
 
 
 
@@ -54,12 +54,15 @@ Universal pendant / jogwheel / handwheel interface that interfaces to standard M
 - Connect wiring according to pin connections in configuration.h
 - Connect X, Y, Z and Enable outputs to your CNC / 3D printer in accordance with Marlin instructions.
 - Enable joystick control in Marlin
-- Fine tune Zero and Multiplier values as necessary
+- Fine tune speed values as necessary
+- Speed can be set as X1 / X10 / X100 / Adaptive. 
+- Adaptive speed mode moves at speed proportional to ratation speed of encoder.
 
 ## BOM
 ###
 
 - Arduino Nano
+- 3 off MPC4151 Voltage Controlled Resistors (10kohm)
 - X,Y,Z selector switch
 - 1x,10x,100x selector switch
 - Encoder jogwheel
