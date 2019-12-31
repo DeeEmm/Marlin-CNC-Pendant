@@ -42,7 +42,7 @@ Universal pendant / jogwheel / handwheel interface that interfaces to standard M
 ## Project Status
 ###
 
-- The project is currently in Beta stage
+- The project is mostly finalised with the current release considered release candidate 1
 - Current stable release available from https://github.com/DeeEmm/Marlin-CNC-Pendant/releases
 - Code has been tested to work with new Marlin 2.0 release
 
@@ -78,4 +78,11 @@ This project is released under the GPLV3 license. For details on usage please re
 ## Further Information
 ###
 
-https://github.com/DeeEmm/Marlin-CNC-Pendant
+- https://github.com/DeeEmm/Marlin-CNC-Pendant
+- https://deeemm.com/index.php/entry/general/marlin-cnc-pendant
+
+## Reference
+###
+
+- Ahttp://cdn.sparkfun.com/datasheets/Components/General%20IC/22060b.pdf
+- http://www.learningaboutelectronics.com/Articles/MCP4131-digital-potentiometer-circuit.php
