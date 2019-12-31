@@ -1,3 +1,9 @@
+19123101 - Release Candidate 1
+		 - #5 - Fine tuned adaptive speed function
+		 - #6 - Changed encoder interrupt routines to utilise bitread (faster)
+		 - General code tidy
+19123101 - Added adaptive speed
+VCR Branch merged into master
 19123003.VCR - VCR control added
 			 - Tested and working
 			 - SPI controlled VCR using an MCP4151 

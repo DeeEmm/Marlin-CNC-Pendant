@@ -12,8 +12,8 @@
  ***/
 
 // Development and release version - Don't forget to update the changelog!!
-#define VERSION "V1.0-Beta"
-#define BUILD "19123003.VCR"
+#define VERSION "V1.0-RC1"
+#define BUILD "19123101"
 
 
 
@@ -31,6 +31,8 @@
  ***/
 
 #define ZERO 0
+#define ON 1
+#define OFF 0
 
 #define X_AXIS_SELECTED 1
 #define Y_AXIS_SELECTED 2
@@ -50,14 +52,20 @@ volatile int counterValue = 0;
 volatile int clickCount = 0;
 volatile int clickStore = 0;
 volatile bool jogActive = false;
-volatile bool stepActive = false;
+volatile bool moveEnabled = false;
 volatile int moveVector = 0;
 
 volatile unsigned long lastTriggeredTimeMs;
 volatile unsigned long targetTimeMs;
+volatile float clickSpeed = 0;
 unsigned long currentTimeMs;
-const unsigned long smoothingFactor = SMOOTHING_FACTOR;
 
+// Encoder (don't forget to debounce it with some caps)
+volatile byte aFlag = 0; // let's us know when we're expecting a rising edge on pinA to signal that the encoder has arrived at a detent
+volatile byte bFlag = 0; // let's us know when we're expecting a rising edge on pinB to signal that the encoder has arrived at a detent (opposite direction to when aFlag is set)
+volatile byte encoderPos = 0; //this variable stores our current value of encoder position. Change to int or uin16_t instead of byte if you want to record a larger range than 0-255
+volatile byte oldEncPos = 0; //stores the last encoder position value so we can compare to the current reading and see if it has changed (so we know when to print to the serial monitor)
+volatile byte reading = 0; //somewhere to store the direct values we read from our interrupt pins before checking to see if we have moved a whole detent
 
 
 /****************************************
@@ -73,9 +81,8 @@ void setup ()
     pinMode(JOGWHEEL_PIN_A, INPUT_PULLUP); 
     pinMode(JOGWHEEL_PIN_B, INPUT_PULLUP);
 
-    attachInterrupt(INTERRUPT_A, jogwheelInterrupt, CHANGE); 
-    attachInterrupt(INTERRUPT_B, jogwheelInterrupt, CHANGE);
-
+    attachInterrupt(INTERRUPT_A, jogwheelInterruptA, RISING); 
+    attachInterrupt(INTERRUPT_B, jogwheelInterruptB, RISING); 
        
     pinMode(JOG_SPEED_X100_PIN, INPUT_PULLUP);   
     pinMode(JOG_SPEED_X10_PIN, INPUT_PULLUP);    
@@ -85,6 +92,8 @@ void setup ()
     pinMode(Y_AXIS_SELECT_PIN, INPUT_PULLUP); 
     pinMode(Z_AXIS_SELECT_PIN, INPUT_PULLUP);  
 
+    pinMode(ADAPTIVE_SPEED_PIN, INPUT_PULLUP);  
+
     pinMode(ENABLE_OUT_PIN, OUTPUT);
     pinMode(X_AXIS_CS_PIN, OUTPUT);
     pinMode(Y_AXIS_CS_PIN, OUTPUT);  
@@ -92,65 +101,55 @@ void setup ()
 
     currentTimeMs = millis();
     targetTimeMs = millis();
-    stepActive = false;
+    moveEnabled = false;
 
     // initialize SPI:
     SPI.begin();
 
+    // Initialise VCRs
     digitalWrite(X_AXIS_CS_PIN, HIGH);
     digitalWrite(Y_AXIS_CS_PIN, HIGH);
     digitalWrite(Z_AXIS_CS_PIN, HIGH);
-  
+
+
 }
 
 
 
 /****************************************
- * JOGWHEEL INTERRUPT
+ * JOGWHEEL INTERRUPT ROUTINES
  * Decode jogwheel data. Will work with any two phase encoder wheel
  * NOTE: Inputs pins need to be interrupt 0 & 1 (pins 2 & 3 on a nano)
  ***/
-void jogwheelInterrupt() {
-    int A = digitalRead(JOGWHEEL_PIN_A); 
-    int B = digitalRead(JOGWHEEL_PIN_B);
-
-    int currentValue = (A << 1) | B;
-    int combined  = (previousValue << 2) | currentValue;
-   
-    if(combined == 0b0010 || 
-        combined == 0b1011 ||
-        combined == 0b1101 || 
-        combined == 0b0100) {
-        counterValue++;
-        clickCount++;
+void jogwheelInterruptA(){
+    cli(); //stop interrupts happening before we read pin values
+    reading = PIND & 0xC; // read all eight pin values then strip away all but pinA and pinB's values
+    if(reading == B00001100 && aFlag) { //check that we have both pins at detent (HIGH) and that we are expecting detent on this pin's rising edge
+      encoderPos --; //decrement the encoder's position count
+      bFlag = 0; //reset flags for the next turn
+      aFlag = 0; //reset flags for the next turn
+      clickSpeed =  1000 / (millis() - lastTriggeredTimeMs);               //clicks per second
+      lastTriggeredTimeMs = millis();
     }
-   
-    if(combined == 0b0001 ||
-        combined == 0b0111 ||
-        combined == 0b1110 ||
-        combined == 0b1000) {
-        counterValue--;
-        clickCount--;
-    }
-
-    previousValue = currentValue;
-
-   // Decode the direction
-    if(counterValue >= 4) {
-        counterValue -= 4;
-        moveVector =  1;
-        
-    } else if(counterValue <= -4) {
-        counterValue += 4;
-        moveVector =  -1;
-    }    
-
-    lastTriggeredTimeMs = millis();
-
-    stepActive = true;
+    else if (reading == B00000100) bFlag = 1; //signal that we're expecting pinB to signal the transition to detent from free rotation
+    sei(); //restart interrupts
+    moveEnabled = true;
 }
 
-
+void jogwheelInterruptB(){
+    cli(); //stop interrupts happening before we read pin values
+    reading = PIND & 0xC; //read all eight pin values then strip away all but pinA and pinB's values
+    if (reading == B00001100 && bFlag) { //check that we have both pins at detent (HIGH) and that we are expecting detent on this pin's rising edge
+      encoderPos ++; //increment the encoder's position count
+      bFlag = 0; //reset flags for the next turn
+      aFlag = 0; //reset flags for the next turn
+      clickSpeed =  1000 / (millis() - lastTriggeredTimeMs);               //clicks per second
+      lastTriggeredTimeMs = millis();
+    }
+    else if (reading == B00001000) aFlag = 1; //signal that we're expecting pinA to signal the transition to detent from free rotation
+    sei(); //restart interrupts
+    moveEnabled = true;
+}
 
 
 /****************************************
@@ -189,14 +188,15 @@ int getSpeed() {
 
 
 
-
 /****************************************
  * SEND JOG SIGNAL
  ***/
 void sendJogSignal(int selectedAxis, int selectedSpeed, int moveDirection) {
 
-    int wiperPosition;
-    int moveVector;
+    float wiperPosition;
+    float moveVector;
+    int adaptiveSpeedEnabled = !digitalRead(ADAPTIVE_SPEED_PIN);
+    float adaptiveSpeed;
 
     float xCenter = (JOY_X_CENTER_VALUE / 16384) * VCR_POT_RES;
     float yCenter = (JOY_Y_CENTER_VALUE / 16384) * VCR_POT_RES;
@@ -204,37 +204,42 @@ void sendJogSignal(int selectedAxis, int selectedSpeed, int moveDirection) {
 
     byte address = BYTE_ADDRESS;
 
-    #ifdef SERIAL_DEBUG
-//        Serial.println(xCenter);
-    #endif
-    
-    //check we have not already moved this click
-    if ((clickCount == clickStore) && (moveVector != 0)) {
-      return;
-    } else {
-      clickCount = clickStore;
-    }
-
     // Decode which speed is selected and determine output voltage from move vector and multiplier
     switch (selectedSpeed)
-    {
-
+    {    
         case JOG_SPEED_X1_SELECTED:
-            moveVector = JOG_SPEED_X1 * moveDirection;
+                moveVector = JOG_SPEED_X1 * moveDirection;
+                // Additional delay to allow individual encoder clicks to result in move
+                // (Otherwise pulse duration is too short for Marlin to see it)
+                delay(CLICK_PULSE_WIDTH);
         break;
 
         case JOG_SPEED_X10_SELECTED:
-            moveVector = JOG_SPEED_X10 * moveDirection;
+                moveVector = JOG_SPEED_X10 * moveDirection;
         break;
 
         case JOG_SPEED_X100_SELECTED:
-            moveVector = JOG_SPEED_X100 * moveDirection;
+                moveVector = JOG_SPEED_X100 * moveDirection;
         break;
     }
 
-    #ifdef SERIAL_DEBUG
-//        Serial.println(moveVector);
-    #endif
+    // Adaptive speed - calculate output speed based on the speed that encoder is rotated
+    if (adaptiveSpeedEnabled == 1) {
+
+        // Lets limit the speed just in case
+        if (clickSpeed > MAX_CLICK_SPEED){
+            clickSpeed = MAX_CLICK_SPEED;
+        } else if ((clickSpeed < MIN_CLICK_SPEED) && (clickSpeed > 0)) {          
+            clickSpeed = MIN_CLICK_SPEED;
+        }
+      
+        // Calculate the speed
+        adaptiveSpeed = ((float)MAX_ADAPTIVE_SPEED / (float)ADAPTIVE_SPEED_RANGE) * clickSpeed;
+
+        // Create the move vector
+        moveVector = adaptiveSpeed * moveDirection;
+
+    }
 
     // Select the correct VCR and set the wiper position.
     switch (selectedAxis)
@@ -265,7 +270,7 @@ void sendJogSignal(int selectedAxis, int selectedSpeed, int moveDirection) {
     }
 
     #ifdef SERIAL_DEBUG
-        Serial.println(wiperPosition);
+//        Serial.println(wiperPosition);
     #endif
 }
 
@@ -275,9 +280,6 @@ void sendJogSignal(int selectedAxis, int selectedSpeed, int moveDirection) {
  * MAIN PROGRAM LOOP
  ***/
 void loop(){ 
-
-    // What's the time?
-    currentTimeMs = millis();
 
     // Decode axis & speed selector switches
     int selectedAxis = getAxis();
@@ -290,50 +292,44 @@ void loop(){
       digitalWrite(ENABLE_OUT_PIN, LOW);      
     }
 
-    // If X1 speed selected only move one pulse per click
-    if (selectedSpeed == JOG_SPEED_X1_SELECTED ) {
 
-          //make sure we only move one click
-          if (stepActive == true) {
-              stepActive = false; 
-          } else {
-              moveVector = 0;
-          }  
+    if((moveEnabled == 1) && (oldEncPos != encoderPos)) {
 
-          // Do the move
-          sendJogSignal(selectedAxis, selectedSpeed, moveVector);        
-
-          //delay by pulse width
-          delay(X1_PULSE_WIDTH);
+        // what direction are we moving?
+        if ((oldEncPos > encoderPos)) {
+            //we are rotating CCW
+            sendJogSignal(selectedAxis, selectedSpeed, -1);    
+            #ifdef SERIAL_DEBUG
+                Serial.println("<<<<<<<<<<<<<<<<<<<");
+            #endif
           
-          #ifdef SERIAL_DEBUG
-              if (moveVector == 1){
-                  Serial.println(">  >  >  >  >  >  >");      
-              }
-              if (moveVector == -1){
-                  Serial.println("<  <  <  <  <  <  <");      
-              }
-          #endif  
+        } else {
+
+            //we are rotating CW
+            sendJogSignal(selectedAxis, selectedSpeed, 1);    
+            #ifdef SERIAL_DEBUG
+                Serial.println(">>>>>>>>>>>>>>>>>>>");
+            #endif
+
+        }
+             
+        // Encoder rolls over at 255 so lets put it back in the middle of the count
+        if ((encoderPos == 255) || (encoderPos == 0)) {
+            encoderPos = 128;
+        }
+
+        oldEncPos = encoderPos;               
+        moveEnabled = false;
+            
+  } else {
     
-    // Else move in accordance with smoothing factor (try to maintain smooth movement)
-    } else if ((currentTimeMs - smoothingFactor) < lastTriggeredTimeMs) {  
+        // We are not trying to move so send a zero vector to reset wiper position
+        sendJogSignal(selectedAxis, selectedSpeed, ZERO);        
+  }
 
-          // Do the move
-          sendJogSignal(selectedAxis, selectedSpeed, moveVector);        
+  // Delay to create pulse width
+  delay(JOG_PULSE_WIDTH);
+    
 
-          #ifdef SERIAL_DEBUG
-              if (moveVector == 1){
-                  Serial.println(">>>>>>>>>>>>>>>>>>");      
-              }
-              if (moveVector == -1){
-                  Serial.println("<<<<<<<<<<<<<<<<<<");      
-              }
-          #endif  
-                     
-    } else {
-
-          // We are not trying to move so send a zero vector
-          sendJogSignal(selectedAxis, selectedSpeed, ZERO);              
-    }
 
 }

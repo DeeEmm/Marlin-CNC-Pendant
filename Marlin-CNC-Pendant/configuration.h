@@ -34,6 +34,8 @@
  * 7 - VCC (5v)
  * 8 - VCC (5v)
  * 
+ * You also need to debounce the encoder by using 10000pF capacitors between the A pin and GND and B pin GND
+ * 
  * MARLIN CONFIGURATION
  * The following values can be found in Configuration_adv.h in Marlin 
  * 
@@ -74,7 +76,7 @@
  * GENERAL SETTINGS
  ***/
 
-#define SERIAL_DEBUG                      // Enable Serial debug mode
+//#define SERIAL_DEBUG                      // Enable Serial debug mode
 
 #define VCR_POT_RES 256                   // 128 or 256 depeonding on VCR chip resolution and settings
 #define BYTE_ADDRESS 0x00                 // 0x00 is pot wiper address
@@ -83,12 +85,19 @@
 #define JOY_Y_CENTER_VALUE (float) 8192   // Mid range (center position) = 16384 / 2 = 8192
 #define JOY_Z_CENTER_VALUE (float) 8192   // Should be same as returned by M119 but may differ slightly depending on resistance of VCR / circuits
 
-#define X1_PULSE_WIDTH 10                 // Jog pulse duration in ms (X1 speed only)
-#define SMOOTHING_FACTOR 100              // Increase to smooth movement (Disabled for X1 speed)
+#define CLICK_PULSE_WIDTH 100              // Jog pulse duration in ms for single click moves (used for X1 speed and adaptive speeds < 1 click per sec)
+#define JOG_PULSE_WIDTH 10                 // Jog pulse duration in ms
 
 #define JOG_SPEED_X1 5                    // NOTE: Speed range is between 0 ~ 64 (0 ~ 100%)      
 #define JOG_SPEED_X10 10                  // Choose values to suit your setup
 #define JOG_SPEED_X100 20                 // e.g. 16 = 25% 
+
+#define ADAPTIVE_SPEED_RANGE 150          // Adaptive speed range
+#define MAX_CLICK_SPEED 200               // Maximum click speed in adaptive mode (speed range)
+#define MIN_CLICK_SPEED 20               // Maximum click speed in adaptive mode (speed range)
+
+#define MIN_ADAPTIVE_SPEED 5              // Minimum speed in adaptive mode
+#define MAX_ADAPTIVE_SPEED 20             // Maximum speed in adaptive mode
 
 #define SPEED_SWITCH_ENABLE true          // Disable system if speed selector switch is open: [0] - X1 - X10 - X100
                                           // Otherwise enable signal should be mnaged externally with a physical switch
@@ -125,6 +134,8 @@
     #define X_AXIS_SELECT_PIN 7         // MPG - yellow
     #define Y_AXIS_SELECT_PIN 8         // MPG - yellow/black
     #define Z_AXIS_SELECT_PIN 9         // MPG - brown
+
+    #define ADAPTIVE_SPEED_PIN 10       // Adaptive speed enable pin
 
 
     // Define outputs
