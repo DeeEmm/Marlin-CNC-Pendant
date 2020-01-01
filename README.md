@@ -84,5 +84,5 @@ This project is released under the GPLV3 license. For details on usage please re
 ## Reference
 ###
 
-- Ahttp://cdn.sparkfun.com/datasheets/Components/General%20IC/22060b.pdf
+- http://cdn.sparkfun.com/datasheets/Components/General%20IC/22060b.pdf
 - http://www.learningaboutelectronics.com/Articles/MCP4131-digital-potentiometer-circuit.php
