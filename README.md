@@ -63,10 +63,6 @@ Here's a video of it in operation
 
 [![Rotary encoder jog wheel](http://img.youtube.com/vi/_DIcDE9QY0A/0.jpg)](http://www.youtube.com/watch?v=_DIcDE9QY0A "Video Title")
 
-And a little more info on my blog 
-
-https://deeemm.com/general/2019/12/29/marlin-cnc-pendant.html
-
 
 ## BOM
 ###
