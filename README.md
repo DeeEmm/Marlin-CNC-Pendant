@@ -56,7 +56,17 @@ Universal pendant / jogwheel / handwheel interface that interfaces to standard M
 - Enable joystick control in Marlin
 - Fine tune speed values as necessary
 - Speed can be set as X1 / X10 / X100 / Adaptive. 
-- Adaptive speed mode moves at speed proportional to ratation speed of encoder.
+- Adaptive speed mode moves at speed proportional to rotation speed of encoder.
+
+
+Here's a video of it in operation
+
+[![Rotary encoder jog wheel](http://img.youtube.com/vi/_DIcDE9QY0A/0.jpg)](http://www.youtube.com/watch?v=_DIcDE9QY0A "Video Title")
+
+And a little more info on my blog 
+
+https://deeemm.com/general/2019/12/29/marlin-cnc-pendant.html
+
 
 ## BOM
 ###
